@@ -13,4 +13,6 @@ import com.hmdp.entity.User;
  */
 public interface IUserService extends IService<User> {
 
+    // 根据phone注册用户
+    User register(String phone);
 }
