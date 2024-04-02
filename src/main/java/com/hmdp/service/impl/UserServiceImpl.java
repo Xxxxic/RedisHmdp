@@ -7,8 +7,6 @@ import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import org.springframework.stereotype.Service;
 
-import java.util.UUID;
-
 /**
  * <p>
  * 服务实现类

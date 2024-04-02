@@ -5,7 +5,7 @@ target/
 !**/src/test/**/target/
 
 ## config password
-/src/main/resources/application.yaml
+/src/main/resources/application
 
 ### STS ###
 .apt_generated

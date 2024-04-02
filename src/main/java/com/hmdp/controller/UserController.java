@@ -80,7 +80,7 @@ public class UserController {
             return Result.fail("验证码有误");
         }
         // 根据手机号码查询用户
-        LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<User>();
+        LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
         qw.eq(phone != null, User::getPhone, phone);
         User one = userService.getOne(qw);
         if(one == null){
