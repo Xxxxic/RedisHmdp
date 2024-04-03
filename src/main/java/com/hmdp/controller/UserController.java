@@ -14,10 +14,16 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
+import java.util.HashMap;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import static com.hmdp.utils.RedisConstants.*;
 
 /**
  * <p>
@@ -38,14 +44,19 @@ public class UserController {
     @Resource
     private IUserInfoService userInfoService;
 
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
     /**
-     * 发送手机验证码
-     * 请求网址: http://localhost:8080/api/user/code?phone=15832165478
+     * 发送手机验证码并保存验证码
+     * 请求网址: /user/code?phone=15832165478
      * 请求方法: POST
+     * <p>
+     * 原本在Seesion中存放user信息
+     * 改到Redis中存：key为前缀+手机号
      */
     @PostMapping("code")
     public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
-        // TODO 发送短信验证码并保存验证码
         // 验证手机号/邮箱格式
         if (RegexUtils.isPhoneInvalid(phone)) {
             // 不正确则返回错误信息
@@ -54,25 +65,32 @@ public class UserController {
         // 正确则发送验证码
         String code = RandomUtil.randomNumbers(6);
         log.info("code: " + code);
-        session.setAttribute(phone, code);
+
+        //session.setAttribute(phone, code);
+        log.info(LOGIN_CODE_KEY + phone);
+        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
 
         return Result.ok("发送成功");
     }
 
     /**
      * 登录功能
+     * <p>
+     * Redis中存用户信息：用哈希表 列为用户字段
+     * key为随机生成token，返回到信息中
      *
      * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
      */
     @PostMapping("/login")
     public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session) {
-        // TODO 实现登录功能
-        log.info(String.valueOf(loginForm));
+        //log.info(String.valueOf(loginForm));
         String phone = loginForm.getPhone();
         String code = loginForm.getCode();
-        String sessionCode = (String) session.getAttribute(phone);
+        String sessionCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
+        log.info(sessionCode);
+        //String sessionCode = (String) session.getAttribute(phone);
         // 校验手机格式
-        if(RegexUtils.isPhoneInvalid(phone)){
+        if (RegexUtils.isPhoneInvalid(phone)) {
             return Result.fail("号码格式不正确");
         }
         // 检验验证码: 空 || 不等
@@ -83,21 +101,33 @@ public class UserController {
         LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
         qw.eq(phone != null, User::getPhone, phone);
         User one = userService.getOne(qw);
-        if(one == null){
+        if (one == null) {
             // 没查到 - 注册
             one = userService.register(phone);
         }
         log.info(String.valueOf(one));
         // 保存UserDTO - 仅存需要信息 保护隐私
-        //UserDTO userDTO = new UserDTO();
-        //userDTO.setId(one.getId());
-        //userDTO.setIcon(one.getIcon());
-        //userDTO.setNickName(one.getNickName());
         UserDTO userDTO = BeanUtil.copyProperties(one, UserDTO.class);
         // 查到了 - 写入session
-        session.setAttribute("user", userDTO);
+        //session.setAttribute("user", userDTO);
 
-        return Result.ok(userDTO);
+        // 修改逻辑：保存用户信息到Redis中
+        // 随机生成token登陆令牌
+        String token = UUID.randomUUID().toString();
+        // userDTO转到HashMap存储
+        HashMap<String, String> userMap = new HashMap<>();
+        userMap.put("id", String.valueOf(userDTO.getId()));
+        userMap.put("icon", userDTO.getIcon());
+        userMap.put("nickname", userDTO.getNickName());
+        // 存储
+        String tokenKey = LOGIN_USER_KEY + token;
+        stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
+        // 设置过期时间，用户设置1小时吧
+        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.SECONDS);
+        // 成功删验证码
+        stringRedisTemplate.delete(LOGIN_CODE_KEY + phone);
+
+        return Result.ok(token);
     }
 
     /**
@@ -117,6 +147,7 @@ public class UserController {
     public Result me() {
         // TODO 获取当前登录的用户并返回
         UserDTO userDTO = UserHolder.getUser();
+
         return Result.ok(userDTO);
         //return Result.fail("功能未完成");
     }
