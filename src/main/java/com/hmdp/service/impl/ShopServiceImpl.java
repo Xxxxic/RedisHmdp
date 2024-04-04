@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.entity.Shop;
@@ -32,6 +33,15 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    private boolean tryLock(String key){
+        Boolean b = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
+        // Boolean取消装箱可能空指针
+        return BooleanUtil.isTrue(b);
+    }
+    private void unlock(String key){
+        stringRedisTemplate.delete(key);
+    }
+
     /**
      * 根据 id 查询商铺
      * <p>
@@ -54,17 +64,29 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return null;
         }
 
-        // 查不到去数据库查
-        Shop shop = this.getById(id);
-        if (shop == null) {
-            // 数据不存在写入Redis：存空值 TTL为两分钟
-            stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
-            return null;
+        Shop shop;
+        try {
+            boolean lock = tryLock(LOCK_SHOP_KEY + id);
+            if(!lock){
+                Thread.sleep(50);
+                return queryByID(id);   // 类递归
+            }
+            // 查不到去数据库查
+            shop = this.getById(id);
+            if (shop == null) {
+                // 数据不存在写入Redis：存空值 TTL为两分钟
+                stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
+                return null;
+            }
+            // 查到了先存入Redis再返回
+            String shopJSON = JSONUtil.toJsonStr(shop);
+            stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, shopJSON, CACHE_SHOP_TTL, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            unlock(LOCK_SHOP_KEY + id);
         }
-        // 查到了先存入Redis再返回
-        String shopJSON = JSONUtil.toJsonStr(shop);
-        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, shopJSON, CACHE_SHOP_TTL, TimeUnit.SECONDS);
-        //log.info("从数据库里面查询到商户");
+
         return shop;
     }
 
