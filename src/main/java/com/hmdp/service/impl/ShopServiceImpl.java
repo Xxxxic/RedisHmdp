@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
@@ -60,5 +61,22 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, shopJSON, CACHE_SHOP_TTL, TimeUnit.SECONDS);
         //log.info("从数据库里面查询到商户");
         return shop;
+    }
+
+    /**
+     * 实现双写一致
+     * 更新时删除缓存：先操作数据库再删除缓存
+     *
+     * @param shop 更新的商铺信息
+     * @return 更新状态
+     */
+    @Transactional
+    @Override
+    public boolean updateImpl(Shop shop) {
+        if (shop.getId() == null)
+            return false;
+        updateById(shop);
+        stringRedisTemplate.delete(CACHE_SHOP_KEY + shop.getId());
+        return true;
     }
 }
