@@ -9,7 +9,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -40,11 +39,11 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
     public List<ShopType> queryList() {
         List<String> shopTypes = stringRedisTemplate.opsForList().range(CACHE_SHOP_TYPE_KEY, 0, -1);
         if (shopTypes != null && !shopTypes.isEmpty()) {
-            List<ShopType> res = new ArrayList<>();
-            for (String s : shopTypes) {
-                res.add(JSONUtil.toBean(s, ShopType.class));
-            }
-            return res;
+            //List<ShopType> res = new ArrayList<>();
+            //for (String s : shopTypes) {
+            //    res.add(JSONUtil.toBean(s, ShopType.class));
+            //}
+            return shopTypes.stream().map(s -> JSONUtil.toBean(s, ShopType.class)).collect(Collectors.toList());
         }
 
         List<ShopType> res = this.query().orderByAsc("sort").list();

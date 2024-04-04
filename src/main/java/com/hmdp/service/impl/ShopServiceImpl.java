@@ -46,9 +46,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         String s = stringRedisTemplate.opsForValue().get(CACHE_SHOP_KEY + id);
         //如果不为空（查询到了），则转为Shop类型直接返
         if (StrUtil.isNotBlank(s)) {
-            Shop shop = JSONUtil.toBean(s, Shop.class);
-            log.info("从缓存里面查询到商户！");
-            return shop;
+            //log.info("从缓存里面查询到商户！");
+            return JSONUtil.toBean(s, Shop.class);
         }
 
         // 查不到去数据库查
@@ -59,7 +58,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 查到了先存入Redis再返回
         String shopJSON = JSONUtil.toJsonStr(shop);
         stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, shopJSON, CACHE_SHOP_TTL, TimeUnit.SECONDS);
-        log.info("从数据库里面查询到商户");
+        //log.info("从数据库里面查询到商户");
         return shop;
     }
 }
