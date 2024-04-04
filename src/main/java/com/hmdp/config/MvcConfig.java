@@ -16,6 +16,7 @@ public class MvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new RefreshTokenInterceptor(stringRedisTemplate)).order(0);
         registry.addInterceptor(new LoginInterceptor()).excludePathPatterns(
                 "/user/code",
                 "/user/login",
@@ -25,8 +26,7 @@ public class MvcConfig implements WebMvcConfigurer {
                 "/upload/**",
                 "/voucher/**"
         ).order(1);
-        registry.addInterceptor(new RefreshTokenInterceptor(stringRedisTemplate)).order(0);
 
-        WebMvcConfigurer.super.addInterceptors(registry);
+        //WebMvcConfigurer.super.addInterceptors(registry);
     }
 }

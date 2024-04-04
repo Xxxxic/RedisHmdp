@@ -33,7 +33,12 @@ public class ShopController {
      */
     @GetMapping("/{id}")
     public Result queryShopById(@PathVariable("id") Long id) {
-        return Result.ok(shopService.getById(id));
+        // 修改根据ID查找的逻辑
+        Shop shop = shopService.queryByID(id);
+        if(shop == null){
+            return Result.fail("商铺不存在");
+        }
+        return Result.ok(shop);
     }
 
     /**

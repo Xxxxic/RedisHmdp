@@ -26,16 +26,16 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         // 取出在localSession存储并发过来的token
         String token = request.getHeader("authorization");
+        // token空也放行
         if (StrUtil.isBlank(token)) {
-            response.setStatus(401);
-            return false;
+            return true;
         }
         String key = LOGIN_USER_KEY + token;
         // 根据token从redis中获取用户
         Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
+        // 不存在，也放行，交给LoginInterceptor
         if (userMap.isEmpty()) {
-            response.setStatus(401);
-            return false;
+            return true;
         }
         // 取出用户
         UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
