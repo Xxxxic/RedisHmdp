@@ -2,18 +2,22 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.RedisData;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-
+import java.time.LocalDateTime;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -33,14 +37,18 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    private boolean tryLock(String key){
+    private boolean tryLock(String key) {
         Boolean b = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
         // Boolean取消装箱可能空指针
         return BooleanUtil.isTrue(b);
     }
-    private void unlock(String key){
+
+    private void unlock(String key) {
         stringRedisTemplate.delete(key);
     }
+
+    // 用于重构缓存的线程池
+    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
     /**
      * 根据 id 查询商铺
@@ -67,7 +75,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         Shop shop;
         try {
             boolean lock = tryLock(LOCK_SHOP_KEY + id);
-            if(!lock){
+            if (!lock) {
                 Thread.sleep(50);
                 return queryByID(id);   // 类递归
             }
@@ -87,6 +95,56 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             unlock(LOCK_SHOP_KEY + id);
         }
 
+        return shop;
+    }
+
+    // 逻辑删除版本
+    public Shop queryByID2(Long id) {
+        // 商铺信息以JSON形式存
+        String s = stringRedisTemplate.opsForValue().get(CACHE_SHOP_KEY + id);
+        // 空：未命中 或者 空值：防止穿透
+        if (StrUtil.isBlank(s) || s.isEmpty()) {
+            return null;
+        }
+        RedisData redisData = JSONUtil.toBean(s, RedisData.class);
+        // data是以json格式存 得用(JSONObject)转，之后再转成Shop
+        Shop shop = JSONUtil.toBean((JSONObject) redisData.getData(), Shop.class);
+        LocalDateTime expireTime = redisData.getExpireTime();
+        if (LocalDateTime.now().isBefore(expireTime)) {
+            return shop;    // 未过期
+        }
+        // 过期 则取锁重建缓存
+        boolean lock = tryLock(LOCK_SHOP_KEY + id);
+        if (lock) {
+            CACHE_REBUILD_EXECUTOR.submit(() -> {
+                Shop shopNew;
+                try {
+                    shopNew = this.saveShop2Redis(id, LOCK_SHOP_TTL);
+                }catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    unlock(LOCK_SHOP_KEY + id);
+                }
+                return shopNew;    // 重建完毕，返回商铺信息（最新的）
+            });
+        }
+        // 未获取到锁，直接放回商铺信息（过期的）
+        return shop;
+    }
+
+    // 查数据，不存在存入空值返回false；将数据封装在redisData设置逻辑ttl，然后缓存
+    public Shop saveShop2Redis(Long id, Long ttl) {
+        Shop shop = this.getById(id);
+        if (shop == null) {
+            // 数据不存在写入Redis：存空值 TTL为两分钟
+            stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
+            return null;
+        }
+        RedisData redisData = new RedisData();
+        redisData.setData(JSONUtil.toJsonStr(shop));
+        redisData.setData(LocalDateTime.now().plusSeconds(ttl)); // 逻辑过期时间
+        // 没设置过期时间
+        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(redisData));
         return shop;
     }
 
