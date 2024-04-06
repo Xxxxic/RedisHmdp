@@ -58,6 +58,12 @@
             <groupId>org.aspectj</groupId>
             <artifactId>aspectjweaver</artifactId>
         </dependency>
+        <!-- Redisson -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>3.13.6</version>
+        </dependency>
         <!-- hutool: 工具 - json/字符串/数字/日期 -->
         <dependency>
             <groupId>cn.hutool</groupId>

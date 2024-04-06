@@ -1,15 +1,18 @@
 package com.hmdp.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIDWorker;
 import com.hmdp.utils.UserHolder;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,9 +29,13 @@ import java.time.LocalDateTime;
  * @since 2021-12-22
  */
 @Service
+@Slf4j
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
     @Resource
     private RedisIDWorker redisIDWorker;
+
+    @Resource
+    private RedissonClient redissonClient;
 
     @Resource
     private ISeckillVoucherService seckillVoucherService;
@@ -40,7 +47,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
      * @return 结果信息
      */
     @Override
-    public Result seckillVoucher(Long voucherId) {
+    public Result seckillVoucher(Long voucherId) throws InterruptedException {
         // 提交优惠卷id，查询信息
         // 注意：这里voucherId不是主键！
         LambdaQueryWrapper<SeckillVoucher> qw = new LambdaQueryWrapper<>();
@@ -63,9 +70,29 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         // 一人一单逻辑：查存在库存后还得查该用户是否已经抢过优惠卷
         Long userId = UserHolder.getUser().getId();
-        synchronized (userId.toString().intern()) {
+
+        // 单机锁实现
+        //synchronized (userId.toString().intern()) {
+        //    IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+        //    return proxy.CreateVoucherOrder(voucherId, userId);
+        //}
+
+        // 分布式锁实现
+        RLock lock = redissonClient.getLock("lock:" + userId);
+        //boolean success = lock.tryLock(1, 10, TimeUnit.SECONDS);
+        boolean success = lock.tryLock();
+        if (!success) {
+            log.info("用户"+userId+"正在尝试购买多张卷");
+            // 说明该用户已经有锁了: 正在尝试购买多张卷
+            return Result.fail("不允许抢多张卷");
+        }
+        try {
             IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
             return proxy.CreateVoucherOrder(voucherId, userId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -79,7 +106,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("已经抢过优惠券了哦");
         }
 
-        // 库存删一个 - 更行数据库
+        // 库存删一个 - 更新数据库
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock - 1")
                 .eq("voucher_id", voucherId)
