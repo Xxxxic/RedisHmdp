@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 
 /**
  * <p>
- *  服务实现类
+ * 服务实现类
  * </p>
  *
  * @author 虎哥
@@ -58,6 +58,20 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             // 无：购买失败
             return Result.fail("优惠券已被抢光了哦，下次记得手速快点");
         }
+
+
+
+        // 一人一单逻辑：查存在库存后还得查该用户是否已经抢过优惠卷
+        Long userId = UserHolder.getUser().getId();
+        //LambdaQueryWrapper<VoucherOrder> qwVoucherOrder = new LambdaQueryWrapper<>();
+        //qwVoucherOrder.eq(userId != null, VoucherOrder::getUserId, userId);
+        //qwVoucherOrder.eq(voucherId != null, VoucherOrder::getVoucherId, voucherId);
+        //int count = voucherOrderService.count(qwVoucherOrder);
+        int count = query().eq("voucher_id", voucherId).eq("user_id", userId).count();
+        if (count > 0) {
+            return Result.fail("已经抢过优惠券了哦");
+        }
+
         // 库存删一个 - 更行数据库
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock - 1")
