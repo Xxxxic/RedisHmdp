@@ -10,7 +10,9 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIDWorker;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
@@ -59,14 +61,19 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("优惠券已被抢光了哦，下次记得手速快点");
         }
 
-
-
         // 一人一单逻辑：查存在库存后还得查该用户是否已经抢过优惠卷
         Long userId = UserHolder.getUser().getId();
-        //LambdaQueryWrapper<VoucherOrder> qwVoucherOrder = new LambdaQueryWrapper<>();
-        //qwVoucherOrder.eq(userId != null, VoucherOrder::getUserId, userId);
-        //qwVoucherOrder.eq(voucherId != null, VoucherOrder::getVoucherId, voucherId);
-        //int count = voucherOrderService.count(qwVoucherOrder);
+        synchronized (userId.toString().intern()) {
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.CreateVoucherOrder(voucherId, userId);
+        }
+    }
+
+    // 在锁粒度为用户的情况下（一人一单），进行库存扣减和订单创建
+    @Override
+    @Transactional
+    public Result CreateVoucherOrder(Long voucherId, Long userId) {
+        // 判断有没有买过
         int count = query().eq("voucher_id", voucherId).eq("user_id", userId).count();
         if (count > 0) {
             return Result.fail("已经抢过优惠券了哦");
@@ -77,7 +84,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 .setSql("stock = stock - 1")
                 .eq("voucher_id", voucherId)
                 //.eq("stock", seckillVoucher.getStock())     // 乐观锁：检查版本号，和进来时是否一样
-                .gt("stock", 0)         // 悲观锁：Mysql的排他锁
+                .gt("stock", 0)
                 .update();
         if (!success)
             return Result.fail("库存不足");
@@ -91,6 +98,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherOrder.setUserId(userID);
         save(voucherOrder);
 
-        return Result.ok("秒杀成功");
+        // 返回订单ID
+        return Result.ok("秒杀成功: " + orderId);
     }
 }
