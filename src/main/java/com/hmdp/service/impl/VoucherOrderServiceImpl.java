@@ -59,8 +59,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("优惠券已被抢光了哦，下次记得手速快点");
         }
         // 库存删一个 - 更行数据库
-        boolean success = seckillVoucherService.update().setSql("stock = stock - 1")
+        boolean success = seckillVoucherService.update()
+                .setSql("stock = stock - 1")
                 .eq("voucher_id", voucherId)
+                //.eq("stock", seckillVoucher.getStock())     // 乐观锁：检查版本号，和进来时是否一样
+                .gt("stock", 0)         // 悲观锁：Mysql的排他锁
                 .update();
         if (!success)
             return Result.fail("库存不足");
