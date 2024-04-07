@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.SeckillVoucher;
-import com.hmdp.entity.User;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
@@ -30,7 +29,10 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * <p>
@@ -195,6 +197,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     /**
      * 优惠卷秒杀 第三版：加消息队列（整合到Lua中）
+     * <p>
+     * * 项目启动时，开启一个线程任务，尝试获取stream.orders中的消息，完成下单
      */
     @Override
     public Result seckillVoucher_v3(Long voucherId) throws InterruptedException {
@@ -210,18 +214,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         proxy = (IVoucherOrderService) AopContext.currentProxy();
         return Result.ok(orderId);
-    }
-
-    /**
-     * 创建订单 第三版
-     * <p>
-     * 项目启动时，开启一个线程任务，尝试获取stream.orders中的消息，完成下单
-     * 从redis的stream消息队列中取出订单信息
-     */
-    @Override
-    public Result CreateVoucherOrder_v3(VoucherOrder voucherOrder) {
-
-        return null;
     }
 
 
