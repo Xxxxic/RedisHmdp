@@ -62,6 +62,9 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         List<Voucher> vouchers = getBaseMapper().queryVoucherOfShop(shopId);
         // 保存到Redis中，防止击穿 有没有都存
         redisVouchers = vouchers.stream().map(JSONUtil::toJsonStr).collect(Collectors.toList());
+        if(redisVouchers.isEmpty()){
+            redisVouchers.add("");
+        }
         stringRedisTemplate.opsForList().leftPushAll(CACHE_SHOP_VOUCHER_KEY + shopId, redisVouchers);
         stringRedisTemplate.expire(CACHE_SHOP_VOUCHER_KEY + shopId, CACHE_SHOP_TTL, TimeUnit.SECONDS);
 

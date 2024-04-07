@@ -15,6 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
  */
 public interface IVoucherOrderService extends IService<VoucherOrder> {
 
+    Result seckillVoucher_v3(Long voucherId) throws InterruptedException;
+
+    @Transactional
+    Result CreateVoucherOrder_v3(VoucherOrder voucherOrder);
+
 
     Result seckillVoucher_v2(Long voucherId) throws InterruptedException;
 
