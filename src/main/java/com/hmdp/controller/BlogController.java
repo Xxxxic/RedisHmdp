@@ -69,4 +69,14 @@ public class BlogController {
     public Result queryById(@PathVariable("id") Integer id) {
         return blogService.queryById(id);
     }
+
+    /**
+     * 点赞列表
+     *
+     * @param id 博客id
+     */
+    @GetMapping("/likes/{id}")
+    public Result queryBlogLikes(@PathVariable Integer id){
+        return blogService.queryBlogLikes(id);
+    }
 }

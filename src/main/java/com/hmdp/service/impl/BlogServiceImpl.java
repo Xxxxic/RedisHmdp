@@ -1,8 +1,11 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.BooleanUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
@@ -11,12 +14,17 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
+import jodd.io.StreamUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
 
@@ -98,23 +106,71 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
      * @param id 博客id
      */
     @Override
+    //public Result likeBlog(Long id) {
+    //    // 查看当前用户有没有点赞
+    //    Long userId = UserHolder.getUser().getId();
+    //    String key = BLOG_LIKED_KEY + id;
+    //    Boolean isLiked = stringRedisTemplate.opsForSet().isMember(key, userId.toString());
+    //    if (Boolean.FALSE.equals(isLiked)) {
+    //        // 没点过: 修改修改点赞数量
+    //        boolean success = update().setSql("liked = liked + 1").eq("id", id).update();
+    //        if (success)
+    //            stringRedisTemplate.opsForSet().add(key, String.valueOf(userId));
+    //    } else {
+    //        boolean success = update().setSql("liked = liked - 1").eq("id", id).update();
+    //        if (success)
+    //            stringRedisTemplate.opsForSet().remove(key, userId.toString());
+    //    }
+    //    return Result.ok();
+    //}
     public Result likeBlog(Long id) {
-        // 查看当前用户有没有点赞
         Long userId = UserHolder.getUser().getId();
         String key = BLOG_LIKED_KEY + id;
-        Boolean isLiked = stringRedisTemplate.opsForSet().isMember(key, userId.toString());
-        if (Boolean.FALSE.equals(isLiked)) {
+        Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
+        if (score == null) {
             // 没点过: 修改修改点赞数量
             boolean success = update().setSql("liked = liked + 1").eq("id", id).update();
             if (success)
-                stringRedisTemplate.opsForSet().add(key, String.valueOf(userId));
+                stringRedisTemplate.opsForZSet().add(key, String.valueOf(userId), System.currentTimeMillis());
         } else {
             boolean success = update().setSql("liked = liked - 1").eq("id", id).update();
             if (success)
-                stringRedisTemplate.opsForSet().remove(key, userId.toString());
+                stringRedisTemplate.opsForZSet().remove(key, userId.toString());
         }
         return Result.ok();
     }
+
+    /**
+     * 点赞列表的查询
+     * <p>
+     * 查询最新点的5个：最新的点的排在前面
+     *
+     * @param id 博客id
+     */
+    @Override
+    public Result queryBlogLikes(Integer id) {
+        // 查出前五个排行的id
+        Set<String> top5 = stringRedisTemplate.opsForZSet().
+                range(BLOG_LIKED_KEY + id, 0, 4);
+        if (top5 == null || top5.isEmpty()) {
+            // 没人点
+            return Result.ok(Collections.emptyList());
+        }
+        // 查出来的结果：没有按照时间排序
+        //将ids使用`,`拼接，SQL语句查询出来的结果并不是按照我们期望的方式进行排序
+        //所以我们需要用order by field来指定排序方式，期望的排序方式就是按照查询出来的id进行排序
+        //select * from tb_user where id in (ids[0], ids[1] ...) order by field(id, ids[0], ids[1] ...)
+        List<Long> ids = top5.stream().map(Long::valueOf).collect(Collectors.toList());
+        String idsStr = StrUtil.join(",", ids);
+        List<UserDTO> userDTOS = userService.query().in("id", ids)
+                .last("order by field(id," + idsStr + ")")
+                .list().stream()
+                .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
+                .collect(Collectors.toList());
+
+        return Result.ok(userDTOS);
+    }
+
 
     private void queryBlogUer(Blog blog) {
         Long userId = blog.getUserId();
