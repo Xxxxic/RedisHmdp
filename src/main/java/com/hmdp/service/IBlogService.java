@@ -14,6 +14,8 @@ import com.baomidou.mybatisplus.extension.service.IService;
  */
 public interface IBlogService extends IService<Blog> {
 
+    Result saveBlogWithFeed(Blog blog);
+
     Result queryHotBlog(Integer current);
 
     Result queryById(Integer id);

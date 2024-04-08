@@ -8,9 +8,11 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
+import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
@@ -25,6 +27,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
+import static com.hmdp.utils.RedisConstants.FEED_KEY;
 
 /**
  * <p>
@@ -44,7 +47,33 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private BlogMapper blogMapper;
 
     @Resource
+    private IFollowService followService;
+
+    @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    @Override
+    public Result saveBlogWithFeed(Blog blog) {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        blog.setUserId(user.getId());
+        // 保存探店博文
+        save(blog);
+
+        // follow表中查粉丝
+        List<Follow> followUserId = followService.query().eq("follow_user_id", user.getId()).list();
+        // 推送博客
+        for (Follow follow : followUserId) {
+            Long FanId = follow.getUserId();
+            String key = FEED_KEY + FanId;
+            stringRedisTemplate.opsForZSet().add(key,
+                    blog.getId().toString(),
+                    System.currentTimeMillis());
+        }
+
+        // 返回id
+        return Result.ok(blog.getId());
+    }
 
     /**
      * @param current 页数 默认第一页
@@ -74,7 +103,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             Double score = stringRedisTemplate.opsForZSet().
                     score(BLOG_LIKED_KEY + blog.getId(),
                             currentUserId);
-            Boolean isLiked = score !=null;
+            Boolean isLiked = score != null;
             blog.setIsLike(BooleanUtil.isTrue(isLiked));
         });
         return Result.ok(records);
