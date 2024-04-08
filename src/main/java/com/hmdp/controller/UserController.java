@@ -139,8 +139,8 @@ public class UserController {
     public Result logout() {
         // TODO 实现登出功能
         UserHolder.removeUser();
-
-        return Result.fail("功能未完成");
+        return Result.ok("登出成功");
+        //return Result.fail("功能未完成");
     }
 
     @GetMapping("/me")
@@ -164,5 +164,21 @@ public class UserController {
         info.setUpdateTime(null);
         // 返回
         return Result.ok(info);
+    }
+
+    // 签到功能
+    @PostMapping("/sign")
+    public Result sign(){
+        return userService.sign();
+    }
+
+    @GetMapping("/sign/count/continuous")
+    public Result signCountContinuous(){
+        return userService.signCountContinuous();
+    }
+
+    @GetMapping("/sign/count/monthtotal")
+    public Result signCountMonthTotal(){
+        return userService.signCountMonthTotal();
     }
 }
