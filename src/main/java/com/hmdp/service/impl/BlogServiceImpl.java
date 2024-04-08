@@ -6,6 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Follow;
@@ -18,12 +19,11 @@ import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
@@ -199,6 +199,66 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         return Result.ok(userDTOS);
     }
 
+    /**
+     * 读Feed推流 关注人的Blog
+     *
+     * @param max    上次的时间戳
+     * @param offset 偏移量
+     * @return
+     */
+    @Override
+    public Result queryBlogOfFollow(Long max, Integer offset) {
+        Long userId = UserHolder.getUser().getId();
+        String key = FEED_KEY + userId;
+        // 查询用户收件箱
+        Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet().
+                reverseRangeByScoreWithScores(key, 0, max, offset, 2);
+
+        // 非空判断
+        if (typedTuples == null || typedTuples.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+
+        // 解析数据: blogId、minTime（时间戳）、offset，这里指定创建的list大小，可以略微提高效率，因为我们知道这个list就得是这么大
+        ArrayList<Long> ids = new ArrayList<>(typedTuples.size());
+        long minTime = 0;
+        int os = 1; // 下次偏移量: 几个相同的时间戳
+        for (ZSetOperations.TypedTuple<String> typedTuple : typedTuples) {
+            String id = typedTuple.getValue();  // 博客id
+            if (id != null) {
+                ids.add(Long.valueOf(id));
+            }
+            long time = Objects.requireNonNull(typedTuple.getScore()).longValue();  // 时间戳
+            if (time == minTime) {
+                os++;
+            } else {
+                minTime = time;
+                os = 1;
+            }
+        }
+
+        // 根据id查询blog
+        String idsStr = StrUtil.join(",", ids);
+        List<Blog> blogs = query().in("id", ids).
+                last("ORDER BY FIELD( id," + idsStr + ")").list();
+        for (Blog blog : blogs) {
+            queryBlogUer(blog);     // 赋值用户信息
+            // 赋值点赞信息
+            Double score = stringRedisTemplate.opsForZSet().
+                    score(BLOG_LIKED_KEY + blog.getId(),
+                            userId);
+            Boolean isLiked = score != null;
+            blog.setIsLike(BooleanUtil.isTrue(isLiked));
+        }
+
+        // 封装结果并返回
+        ScrollResult scrollResult = new ScrollResult();
+        scrollResult.setList(blogs);
+        scrollResult.setOffset(os);
+        scrollResult.setMinTime(minTime);
+        return Result.ok(scrollResult);
+    }
+
 
     private void queryBlogUer(Blog blog) {
         Long userId = blog.getUserId();
@@ -206,4 +266,6 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         blog.setIcon(user.getIcon());
         blog.setName(user.getNickName());
     }
+
+
 }

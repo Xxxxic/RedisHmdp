@@ -83,4 +83,12 @@ public class BlogController {
     public Result queryBlogLikes(@PathVariable Integer id) {
         return blogService.queryBlogLikes(id);
     }
+
+    /**
+     * 查看关注人的Blog 读Feed推流
+     */
+    @GetMapping("/of/follow")
+    public Result queryBlogOfFollow(@RequestParam("lastId") Long max, @RequestParam(value = "offset",defaultValue = "0") Integer offset) {
+        return blogService.queryBlogOfFollow(max,offset);
+    }
 }
