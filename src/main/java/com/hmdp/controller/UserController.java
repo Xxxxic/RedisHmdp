@@ -152,6 +152,7 @@ public class UserController {
         //return Result.fail("功能未完成");
     }
 
+    // 自己信息Info查询 实际上和下面方法一样
     @GetMapping("/info/{id}")
     public Result info(@PathVariable("id") Long userId) {
         // 查询详情
@@ -164,6 +165,20 @@ public class UserController {
         info.setUpdateTime(null);
         // 返回
         return Result.ok(info);
+    }
+
+    // 查对应用户页 with blog
+    @GetMapping("/{id}")
+    public Result Userinfo(@PathVariable("id") Long userId) {
+        // 查询详情
+        User user = userService.getById(userId);
+        if (user == null) {
+            // 没有详情，应该是第一次查看详情
+            return Result.ok();
+        }
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        // 返回
+        return Result.ok(userDTO);
     }
 
     // 签到功能

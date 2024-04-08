@@ -1,11 +1,11 @@
 package com.hmdp.controller;
 
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
-import com.hmdp.entity.User;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
@@ -29,8 +29,6 @@ public class BlogController {
 
     @Resource
     private IBlogService blogService;
-    @Resource
-    private IUserService userService;
 
     @PostMapping
     public Result saveBlog(@RequestBody Blog blog) {
@@ -60,6 +58,17 @@ public class BlogController {
         return Result.ok(records);
     }
 
+    @GetMapping("/of/user")
+    public Result queryBlogUserId(@RequestParam(value = "current", defaultValue = "1") Integer current,
+                                  @RequestParam("id") Long userId) {
+        LambdaQueryWrapper<Blog> qw = new LambdaQueryWrapper<>();
+        qw.eq(Blog::getUserId, userId);
+        Page<Blog> pageInfo = new Page<>(current, SystemConstants.MAX_PAGE_SIZE);
+        // 获取对应Blog信息
+        List<Blog> records = blogService.page(pageInfo, qw).getRecords();
+        return Result.ok(records);
+    }
+
     @GetMapping("/hot")
     public Result queryHotBlog(@RequestParam(value = "current", defaultValue = "1") Integer current) {
         return blogService.queryHotBlog(current);
@@ -76,7 +85,7 @@ public class BlogController {
      * @param id 博客id
      */
     @GetMapping("/likes/{id}")
-    public Result queryBlogLikes(@PathVariable Integer id){
+    public Result queryBlogLikes(@PathVariable Integer id) {
         return blogService.queryBlogLikes(id);
     }
 }
